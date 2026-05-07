@@ -81,14 +81,28 @@ function render() {
     }
   }
   drawGrid();
+
+  // Hover preview: translucent square over the cell under the mouse
+  if (hoveredCell !== null) {
+    const x = hoveredCell.col * TILE_SIZE;
+    const y = hoveredCell.row * TILE_SIZE;
+    ctx.fillStyle = TILE_COLORS[selectedTile];
+    ctx.globalAlpha = 0.4;       // 40% opaque
+    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+    ctx.globalAlpha = 1.0;       // reset to fully opaque for future drawing
+  }
 }
 
 // =====================
 // INTERACTION
 // =====================
 
-// Convert a mouse event's pixel coordinates into a grid cell.
-// Returns { row, col } or null if the click was outside the grid.
+// Currently-hovered cell, or null if mouse isn't over the canvas
+let hoveredCell = null;
+
+// Track whether the mouse button is held down
+let isPainting = false;
+
 function eventToCell(event) {
   const rect = canvas.getBoundingClientRect();
   const pixelX = event.clientX - rect.left;
@@ -103,24 +117,56 @@ function eventToCell(event) {
   return { row, col };
 }
 
-// When the canvas is clicked, place the selected tile at the clicked cell
-canvas.addEventListener("click", (event) => {
+// Paint a single cell with the currently selected tile, if it changed
+function paintCell(event) {
   const cell = eventToCell(event);
   if (cell === null) return;
 
+  // Optimization: only redraw if the tile actually changed
+  if (world[cell.row][cell.col] === selectedTile) return;
+
   world[cell.row][cell.col] = selectedTile;
+  render();
+}
+
+canvas.addEventListener("mousedown", (event) => {
+  isPainting = true;
+  paintCell(event);
+});
+
+canvas.addEventListener("mousemove", (event) => {
+  const cell = eventToCell(event);
+  hoveredCell = cell;
+
+  if (isPainting) {
+    paintCell(event);
+  } else {
+    render();  // re-render to update hover preview
+  }
+});
+
+canvas.addEventListener("mouseup", () => {
+  isPainting = false;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  isPainting = false;
+  hoveredCell = null;
   render();
 });
 
-// Wire up the toolbar buttons
-const toolbarButtons = document.querySelectorAll("#toolbar button");
+// =====================
+// TOOLBAR (TILE BUTTONS)
+// =====================
+
+// Only the tile-selection buttons (those with data-tile),
+// not Save/Load/Clear.
+const toolbarButtons = document.querySelectorAll("#toolbar button[data-tile]");
 
 toolbarButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    // Update the selected tile
     selectedTile = button.dataset.tile;
 
-    // Update visual highlight: remove .active from all, add to this one
     toolbarButtons.forEach((b) => b.classList.remove("active"));
     button.classList.add("active");
   });
@@ -129,6 +175,67 @@ toolbarButtons.forEach((button) => {
 // Highlight the default-selected button on load
 document.querySelector(`#toolbar button[data-tile="${selectedTile}"]`)
   .classList.add("active");
+
+// =====================
+// SAVE / LOAD / CLEAR
+// =====================
+
+document.getElementById("save-btn").addEventListener("click", () => {
+  const json = JSON.stringify(world);
+  localStorage.setItem("map-builder-world", json);
+  console.log("Map saved");
+});
+
+document.getElementById("load-btn").addEventListener("click", () => {
+  const json = localStorage.getItem("map-builder-world");
+  if (json === null) {
+    console.log("No saved map found");
+    return;
+  }
+  const loaded = JSON.parse(json);
+
+  // Replace the contents of `world` in place, so the rest of the code
+  // still has the same array reference.
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      world[row][col] = loaded[row][col];
+    }
+  }
+  render();
+  console.log("Map loaded");
+});
+
+document.getElementById("clear-btn").addEventListener("click", () => {
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      world[row][col] = TILE.EMPTY;
+    }
+  }
+  render();
+  console.log("Map cleared");
+});
+
+// =====================
+// KEYBOARD SHORTCUTS
+// =====================
+
+const KEY_TO_TILE = {
+  "1": TILE.EMPTY,
+  "2": TILE.ROAD,
+  "3": TILE.BUILDING,
+  "4": TILE.PARK
+};
+
+window.addEventListener("keydown", (event) => {
+  const tile = KEY_TO_TILE[event.key];
+  if (tile === undefined) return;
+
+  selectedTile = tile;
+
+  toolbarButtons.forEach((b) => b.classList.remove("active"));
+  document.querySelector(`#toolbar button[data-tile="${tile}"]`)
+    .classList.add("active");
+});
 
 // =====================
 // GO
