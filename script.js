@@ -1,18 +1,14 @@
-// Get a reference to the canvas element in the HTML
-const canvas = document.getElementById("map");
+// =====================
+// SETUP
+// =====================
 
-// Get the 2D drawing context — this is the object we actually draw with
+const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
-// Configuration: how big each grid cell is, in pixels
 const TILE_SIZE = 32;
+const COLS = canvas.width / TILE_SIZE;
+const ROWS = canvas.height / TILE_SIZE;
 
-// Calculate how many columns and rows fit in the canvas
-const COLS = canvas.width / TILE_SIZE;   // 640 / 32 = 20
-const ROWS = canvas.height / TILE_SIZE;  // 480 / 32 = 15
-
-// Tile types: each tile is one of these strings.
-// Centralizing them as constants prevents typos like "rode" vs "road".
 const TILE = {
   EMPTY: "empty",
   ROAD: "road",
@@ -20,17 +16,18 @@ const TILE = {
   PARK: "park"
 };
 
-// Color for each tile type
 const TILE_COLORS = {
-  [TILE.EMPTY]: "#ffffff",     // white
-  [TILE.ROAD]: "#555555",      // dark gray
-  [TILE.BUILDING]: "#a0522d",  // brown
-  [TILE.PARK]: "#7cba7c"       // green
+  [TILE.EMPTY]: "#ffffff",
+  [TILE.ROAD]: "#555555",
+  [TILE.BUILDING]: "#a0522d",
+  [TILE.PARK]: "#7cba7c"
 };
 
-// THE WORLD: a 2D array of tile types.
-// world[row][col] gives you the tile at that position.
-// We initialize every cell to "empty".
+// =====================
+// WORLD STATE
+// =====================
+
+// 2D array — every cell starts as empty
 const world = [];
 for (let row = 0; row < ROWS; row++) {
   const rowArray = [];
@@ -40,27 +37,22 @@ for (let row = 0; row < ROWS; row++) {
   world.push(rowArray);
 }
 
-// TEMPORARY: hardcode a few tiles so we can see rendering work.
-// We'll remove this once clicking is implemented in Step D.
-world[2][3] = TILE.ROAD;
-world[2][4] = TILE.ROAD;
-world[2][5] = TILE.ROAD;
-world[5][7] = TILE.BUILDING;
-world[8][10] = TILE.PARK;
+// Currently-selected tile type. Default to road.
+let selectedTile = TILE.ROAD;
 
-// Draw a single tile (a filled square) at the given grid position
+// =====================
+// RENDERING
+// =====================
+
 function drawTile(row, col) {
   const tileType = world[row][col];
   const color = TILE_COLORS[tileType];
-
   const x = col * TILE_SIZE;
   const y = row * TILE_SIZE;
-
   ctx.fillStyle = color;
   ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 }
 
-// Draw the grid lines on top of tiles
 function drawGrid() {
   ctx.strokeStyle = "#ddd";
   ctx.lineWidth = 1;
@@ -82,8 +74,6 @@ function drawGrid() {
   }
 }
 
-// Render the whole world: draw every tile, then the grid lines on top.
-// This is the function we'll call whenever the world changes.
 function render() {
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
@@ -93,6 +83,56 @@ function render() {
   drawGrid();
 }
 
-render();
+// =====================
+// INTERACTION
+// =====================
 
+// Convert a mouse event's pixel coordinates into a grid cell.
+// Returns { row, col } or null if the click was outside the grid.
+function eventToCell(event) {
+  const rect = canvas.getBoundingClientRect();
+  const pixelX = event.clientX - rect.left;
+  const pixelY = event.clientY - rect.top;
+
+  const col = Math.floor(pixelX / TILE_SIZE);
+  const row = Math.floor(pixelY / TILE_SIZE);
+
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
+    return null;
+  }
+  return { row, col };
+}
+
+// When the canvas is clicked, place the selected tile at the clicked cell
+canvas.addEventListener("click", (event) => {
+  const cell = eventToCell(event);
+  if (cell === null) return;
+
+  world[cell.row][cell.col] = selectedTile;
+  render();
+});
+
+// Wire up the toolbar buttons
+const toolbarButtons = document.querySelectorAll("#toolbar button");
+
+toolbarButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    // Update the selected tile
+    selectedTile = button.dataset.tile;
+
+    // Update visual highlight: remove .active from all, add to this one
+    toolbarButtons.forEach((b) => b.classList.remove("active"));
+    button.classList.add("active");
+  });
+});
+
+// Highlight the default-selected button on load
+document.querySelector(`#toolbar button[data-tile="${selectedTile}"]`)
+  .classList.add("active");
+
+// =====================
+// GO
+// =====================
+
+render();
 console.log(`World initialized: ${ROWS} rows x ${COLS} cols`);
