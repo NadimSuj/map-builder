@@ -9,10 +9,6 @@ const TILE_SIZE = 32;
 const COLS = canvas.width / TILE_SIZE;
 const ROWS = canvas.height / TILE_SIZE;
 
-function cellKey(cell) {
-  return `${cell.row},${cell.col}`;
-}
-
 const TILE = {
   EMPTY: "empty",
   ROAD: "road",
@@ -56,6 +52,9 @@ let hoveredCell = null;
 
 // Track whether the mouse button is held down
 let isPainting = false;
+
+// The path found by the most recent search, or null if none
+let currentPath = null;
 
 // =====================
 // RENDERING
@@ -109,14 +108,14 @@ function render() {
   drawGrid();
 
   // Draw the path (yellow highlight on each cell of the path)
-if (currentPath !== null) {
-  ctx.fillStyle = "rgba(255, 220, 0, 0.6)"; // translucent yellow
-  for (const cell of currentPath) {
-    const x = cell.col * TILE_SIZE;
-    const y = cell.row * TILE_SIZE;
-    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  if (currentPath !== null) {
+    ctx.fillStyle = "rgba(255, 220, 0, 0.6)"; // translucent yellow
+    for (const cell of currentPath) {
+      const x = cell.col * TILE_SIZE;
+      const y = cell.row * TILE_SIZE;
+      ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+    }
   }
-}
 
   // Draw start cell marker (green ring)
   if (startCell !== null) {
@@ -137,8 +136,6 @@ if (currentPath !== null) {
     ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
     ctx.globalAlpha = 1.0;       // reset to fully opaque for future drawing
   }
-
-
 }
 
 // =====================
@@ -266,7 +263,7 @@ document.getElementById("find-path-btn").addEventListener("click", () => {
     return;
   }
 
-  const path = bfs(startCell, endCell);
+  const path = aStar(startCell, endCell);
 
   if (path === null) {
     console.log("No path found between start and end");
@@ -346,9 +343,6 @@ window.addEventListener("keydown", (event) => {
 // PATHFINDING
 // =====================
 
-// State: the path found by the most recent search, or null if none
-let currentPath = null;
-
 function cellKey(cell) {
   return `${cell.row},${cell.col}`;
 }
@@ -379,42 +373,36 @@ function neighbors(cell) {
 // Returns an array of cells from start to end (inclusive), or null if
 // no path exists.
 function bfs(start, end) {
-  // Validate: both endpoints must be road tiles
   if (world[start.row][start.col] !== TILE.ROAD) return null;
   if (world[end.row][end.col] !== TILE.ROAD) return null;
+
+  let nodesExplored = 0;
 
   const queue = [start];
   const visited = new Set();
   visited.add(cellKey(start));
-
-  // Map from cell key to the cell we came from to reach it
   const cameFrom = new Map();
 
   while (queue.length > 0) {
-    const current = queue.shift();  // remove and return the first element
+    const current = queue.shift();
+    nodesExplored++;
 
-    // Have we arrived?
     if (current.row === end.row && current.col === end.col) {
+      console.log(`BFS explored ${nodesExplored} nodes`);
       return reconstructPath(cameFrom, end);
     }
 
-    // Explore neighbors
     for (const next of neighbors(current)) {
       const key = cellKey(next);
-
-      // Skip if not a road
       if (world[next.row][next.col] !== TILE.ROAD) continue;
-
-      // Skip if already visited
       if (visited.has(key)) continue;
-
       visited.add(key);
       cameFrom.set(key, current);
       queue.push(next);
     }
   }
 
-  // Queue exhausted, never reached end
+  console.log(`BFS explored ${nodesExplored} nodes (no path)`);
   return null;
 }
 
@@ -429,6 +417,58 @@ function reconstructPath(cameFrom, end) {
   }
 
   return path;
+}
+
+// Manhattan distance heuristic for grid movement (no diagonals)
+function manhattanDistance(a, b) {
+  return Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
+}
+
+// A* search from start to end. Same return type as bfs():
+// an array of cells from start to end, or null if no path exists.
+function aStar(start, end) {
+  if (world[start.row][start.col] !== TILE.ROAD) return null;
+  if (world[end.row][end.col] !== TILE.ROAD) return null;
+
+  let nodesExplored = 0;
+
+  const openSet = [{ cell: start, f: manhattanDistance(start, end) }];
+  const gScore = new Map();
+  gScore.set(cellKey(start), 0);
+  const cameFrom = new Map();
+
+  while (openSet.length > 0) {
+    let bestIndex = 0;
+    for (let i = 1; i < openSet.length; i++) {
+      if (openSet[i].f < openSet[bestIndex].f) {
+        bestIndex = i;
+      }
+    }
+    const current = openSet.splice(bestIndex, 1)[0].cell;
+    nodesExplored++;
+
+    if (current.row === end.row && current.col === end.col) {
+      console.log(`A* explored ${nodesExplored} nodes`);
+      return reconstructPath(cameFrom, end);
+    }
+
+    const currentG = gScore.get(cellKey(current));
+
+    for (const next of neighbors(current)) {
+      if (world[next.row][next.col] !== TILE.ROAD) continue;
+      const nextKey = cellKey(next);
+      const tentativeG = currentG + 1;
+      const knownG = gScore.get(nextKey);
+      if (knownG !== undefined && tentativeG >= knownG) continue;
+      cameFrom.set(nextKey, current);
+      gScore.set(nextKey, tentativeG);
+      const f = tentativeG + manhattanDistance(next, end);
+      openSet.push({ cell: next, f });
+    }
+  }
+
+  console.log(`A* explored ${nodesExplored} nodes (no path)`);
+  return null;
 }
 
 // =====================
