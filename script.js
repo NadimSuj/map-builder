@@ -40,6 +40,19 @@ for (let row = 0; row < ROWS; row++) {
 // Currently-selected tile type. Default to road.
 let selectedTile = TILE.ROAD;
 
+// Interaction mode: "paint", "set-start", or "set-end"
+let mode = "paint";
+
+// The start and end cells for pathfinding (each is { row, col } or null)
+let startCell = null;
+let endCell = null;
+
+// Currently-hovered cell, or null if mouse isn't over the canvas
+let hoveredCell = null;
+
+// Track whether the mouse button is held down
+let isPainting = false;
+
 // =====================
 // RENDERING
 // =====================
@@ -51,6 +64,15 @@ function drawTile(row, col) {
   const y = row * TILE_SIZE;
   ctx.fillStyle = color;
   ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+}
+
+function drawCellOutline(row, col, color, thickness) {
+  const x = col * TILE_SIZE;
+  const y = row * TILE_SIZE;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = thickness;
+  ctx.strokeRect(x + thickness / 2, y + thickness / 2,
+                 TILE_SIZE - thickness, TILE_SIZE - thickness);
 }
 
 function drawGrid() {
@@ -82,6 +104,16 @@ function render() {
   }
   drawGrid();
 
+  // Draw start cell marker (green ring)
+  if (startCell !== null) {
+    drawCellOutline(startCell.row, startCell.col, "#22aa22", 4);
+  }
+
+  // Draw end cell marker (red ring)
+  if (endCell !== null) {
+    drawCellOutline(endCell.row, endCell.col, "#cc2222", 4);
+  }
+
   // Hover preview: translucent square over the cell under the mouse
   if (hoveredCell !== null) {
     const x = hoveredCell.col * TILE_SIZE;
@@ -97,12 +129,6 @@ function render() {
 // INTERACTION
 // =====================
 
-// Currently-hovered cell, or null if mouse isn't over the canvas
-let hoveredCell = null;
-
-// Track whether the mouse button is held down
-let isPainting = false;
-
 function eventToCell(event) {
   const rect = canvas.getBoundingClientRect();
   const pixelX = event.clientX - rect.left;
@@ -117,31 +143,47 @@ function eventToCell(event) {
   return { row, col };
 }
 
-// Paint a single cell with the currently selected tile, if it changed
-function paintCell(event) {
+function handleCanvasClick(event) {
   const cell = eventToCell(event);
   if (cell === null) return;
 
-  // Optimization: only redraw if the tile actually changed
-  if (world[cell.row][cell.col] === selectedTile) return;
+  if (mode === "set-start") {
+    startCell = cell;
+    mode = "paint";
+    updateModeButtons();
+    render();
+    return;
+  }
 
+  if (mode === "set-end") {
+    endCell = cell;
+    mode = "paint";
+    updateModeButtons();
+    render();
+    return;
+  }
+
+  // Default: paint mode
+  if (world[cell.row][cell.col] === selectedTile) return;
   world[cell.row][cell.col] = selectedTile;
   render();
 }
 
 canvas.addEventListener("mousedown", (event) => {
-  isPainting = true;
-  paintCell(event);
+  if (mode === "paint") {
+    isPainting = true;
+  }
+  handleCanvasClick(event);
 });
 
 canvas.addEventListener("mousemove", (event) => {
   const cell = eventToCell(event);
   hoveredCell = cell;
 
-  if (isPainting) {
-    paintCell(event);
+  if (isPainting && mode === "paint") {
+    handleCanvasClick(event);
   } else {
-    render();  // re-render to update hover preview
+    render();
   }
 });
 
@@ -155,17 +197,27 @@ canvas.addEventListener("mouseleave", () => {
   render();
 });
 
+function updateModeButtons() {
+  const startBtn = document.getElementById("set-start-btn");
+  const endBtn = document.getElementById("set-end-btn");
+
+  startBtn.classList.toggle("active", mode === "set-start");
+  endBtn.classList.toggle("active", mode === "set-end");
+}
+
 // =====================
 // TOOLBAR (TILE BUTTONS)
 // =====================
 
 // Only the tile-selection buttons (those with data-tile),
-// not Save/Load/Clear.
+// not Save/Load/Clear or mode buttons.
 const toolbarButtons = document.querySelectorAll("#toolbar button[data-tile]");
 
 toolbarButtons.forEach((button) => {
   button.addEventListener("click", () => {
     selectedTile = button.dataset.tile;
+    mode = "paint";
+    updateModeButtons();
 
     toolbarButtons.forEach((b) => b.classList.remove("active"));
     button.classList.add("active");
@@ -175,6 +227,25 @@ toolbarButtons.forEach((button) => {
 // Highlight the default-selected button on load
 document.querySelector(`#toolbar button[data-tile="${selectedTile}"]`)
   .classList.add("active");
+
+// =====================
+// MODE BUTTONS (START / END / FIND PATH)
+// =====================
+
+document.getElementById("set-start-btn").addEventListener("click", () => {
+  mode = "set-start";
+  updateModeButtons();
+});
+
+document.getElementById("set-end-btn").addEventListener("click", () => {
+  mode = "set-end";
+  updateModeButtons();
+});
+
+document.getElementById("find-path-btn").addEventListener("click", () => {
+  console.log("Find Path clicked — pathfinding not yet implemented");
+  // We'll fill this in during F2
+});
 
 // =====================
 // SAVE / LOAD / CLEAR
@@ -231,6 +302,8 @@ window.addEventListener("keydown", (event) => {
   if (tile === undefined) return;
 
   selectedTile = tile;
+  mode = "paint";
+  updateModeButtons();
 
   toolbarButtons.forEach((b) => b.classList.remove("active"));
   document.querySelector(`#toolbar button[data-tile="${tile}"]`)
