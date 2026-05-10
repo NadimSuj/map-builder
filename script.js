@@ -9,6 +9,10 @@ const TILE_SIZE = 32;
 const COLS = canvas.width / TILE_SIZE;
 const ROWS = canvas.height / TILE_SIZE;
 
+function cellKey(cell) {
+  return `${cell.row},${cell.col}`;
+}
+
 const TILE = {
   EMPTY: "empty",
   ROAD: "road",
@@ -104,6 +108,16 @@ function render() {
   }
   drawGrid();
 
+  // Draw the path (yellow highlight on each cell of the path)
+if (currentPath !== null) {
+  ctx.fillStyle = "rgba(255, 220, 0, 0.6)"; // translucent yellow
+  for (const cell of currentPath) {
+    const x = cell.col * TILE_SIZE;
+    const y = cell.row * TILE_SIZE;
+    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  }
+}
+
   // Draw start cell marker (green ring)
   if (startCell !== null) {
     drawCellOutline(startCell.row, startCell.col, "#22aa22", 4);
@@ -123,6 +137,8 @@ function render() {
     ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
     ctx.globalAlpha = 1.0;       // reset to fully opaque for future drawing
   }
+
+
 }
 
 // =====================
@@ -243,8 +259,24 @@ document.getElementById("set-end-btn").addEventListener("click", () => {
 });
 
 document.getElementById("find-path-btn").addEventListener("click", () => {
-  console.log("Find Path clicked — pathfinding not yet implemented");
-  // We'll fill this in during F2
+  if (startCell === null || endCell === null) {
+    console.log("Set both start and end cells first");
+    currentPath = null;
+    render();
+    return;
+  }
+
+  const path = bfs(startCell, endCell);
+
+  if (path === null) {
+    console.log("No path found between start and end");
+    currentPath = null;
+  } else {
+    console.log(`Path found, length ${path.length}`);
+    currentPath = path;
+  }
+
+  render();
 });
 
 // =====================
@@ -309,6 +341,95 @@ window.addEventListener("keydown", (event) => {
   document.querySelector(`#toolbar button[data-tile="${tile}"]`)
     .classList.add("active");
 });
+
+// =====================
+// PATHFINDING
+// =====================
+
+// State: the path found by the most recent search, or null if none
+let currentPath = null;
+
+function cellKey(cell) {
+  return `${cell.row},${cell.col}`;
+}
+
+// Get the up-to-4 orthogonal neighbors of a cell, clipped to the grid bounds
+function neighbors(cell) {
+  const result = [];
+  const directions = [
+    { dr: -1, dc:  0 }, // north
+    { dr:  1, dc:  0 }, // south
+    { dr:  0, dc: -1 }, // west
+    { dr:  0, dc:  1 }, // east
+  ];
+
+  for (const { dr, dc } of directions) {
+    const newRow = cell.row + dr;
+    const newCol = cell.col + dc;
+    if (newRow < 0 || newRow >= ROWS || newCol < 0 || newCol >= COLS) {
+      continue;
+    }
+    result.push({ row: newRow, col: newCol });
+  }
+
+  return result;
+}
+
+// Breadth-first search from start to end, walking only on road tiles.
+// Returns an array of cells from start to end (inclusive), or null if
+// no path exists.
+function bfs(start, end) {
+  // Validate: both endpoints must be road tiles
+  if (world[start.row][start.col] !== TILE.ROAD) return null;
+  if (world[end.row][end.col] !== TILE.ROAD) return null;
+
+  const queue = [start];
+  const visited = new Set();
+  visited.add(cellKey(start));
+
+  // Map from cell key to the cell we came from to reach it
+  const cameFrom = new Map();
+
+  while (queue.length > 0) {
+    const current = queue.shift();  // remove and return the first element
+
+    // Have we arrived?
+    if (current.row === end.row && current.col === end.col) {
+      return reconstructPath(cameFrom, end);
+    }
+
+    // Explore neighbors
+    for (const next of neighbors(current)) {
+      const key = cellKey(next);
+
+      // Skip if not a road
+      if (world[next.row][next.col] !== TILE.ROAD) continue;
+
+      // Skip if already visited
+      if (visited.has(key)) continue;
+
+      visited.add(key);
+      cameFrom.set(key, current);
+      queue.push(next);
+    }
+  }
+
+  // Queue exhausted, never reached end
+  return null;
+}
+
+function reconstructPath(cameFrom, end) {
+  const path = [end];
+  let currentKey = cellKey(end);
+
+  while (cameFrom.has(currentKey)) {
+    const prev = cameFrom.get(currentKey);
+    path.unshift(prev);  // prepend
+    currentKey = cellKey(prev);
+  }
+
+  return path;
+}
 
 // =====================
 // GO
