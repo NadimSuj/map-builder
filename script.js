@@ -5,6 +5,11 @@
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
+//For the test push/pull test run
+var x = 5;
+var y = 10;
+var sum = x + y;
+
 const TILE_SIZE = 32;
 const COLS = canvas.width / TILE_SIZE;
 const ROWS = canvas.height / TILE_SIZE;
@@ -17,10 +22,10 @@ const TILE = {
 };
 
 const TILE_COLORS = {
-  [TILE.EMPTY]: "#ffffff",
-  [TILE.ROAD]: "#555555",
-  [TILE.BUILDING]: "#a0522d",
-  [TILE.PARK]: "#7cba7c"
+  [TILE.EMPTY]: "#ffffff", //For empty space 
+  [TILE.ROAD]: "#555555", //For roads
+  [TILE.BUILDING]: "#a0522d", //For buildings
+  [TILE.PARK]: "#7cba7c"//For parks
 };
 
 // =====================
